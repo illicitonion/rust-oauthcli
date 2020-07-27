@@ -22,6 +22,7 @@
 //! For more detail, see [this article](http://azyobuzin.hatenablog.com/entry/2015/04/18/232516) (Japanese).
 
 extern crate base64;
+extern crate percent_encoding;
 extern crate rand;
 extern crate ring;
 extern crate time;
@@ -29,13 +30,12 @@ pub extern crate url;
 
 #[cfg(test)] mod tests;
 
-use std::ascii::AsciiExt;
+use percent_encoding::{EncodeSet, PercentEncode, utf8_percent_encode};
 use std::borrow::{Borrow, Cow};
 use std::error::Error;
 use std::fmt::{self, Write};
 use std::iter;
 use url::Url;
-use url::percent_encoding::{EncodeSet, PercentEncode, utf8_percent_encode};
 
 /// Available `oauth_signature_method` types.
 #[derive(Copy, Debug, PartialEq, Eq, Clone, Hash)]
@@ -99,7 +99,7 @@ impl Error for ParseOAuthAuthorizationHeaderError {
 
 impl fmt::Display for ParseOAuthAuthorizationHeaderError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.write_str(self.description())
+        f.write_str(&self.to_string())
     }
 }
 
@@ -129,7 +129,7 @@ impl OAuthAuthorizationHeader {
 
 impl fmt::Display for OAuthAuthorizationHeader {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        try!(f.write_str("OAuth "));
+        f.write_str("OAuth ")?;
         f.write_str(&self.s)
     }
 }
@@ -166,18 +166,18 @@ impl std::str::FromStr for OAuthAuthorizationHeader {
         let mut s = s.trim();
         if let Some(scheme) = s.split_whitespace().next() {
             if scheme.eq_ignore_ascii_case("OAuth") {
-                s = &scheme[5..].trim_left();
+                s = &scheme[5..].trim_start();
             }
         }
 
         // Check each pair
         for pair in s.split(',').map(|x| x.trim()).filter(|x| x.len() > 0) {
             if let Some(equal_index) = pair.find('=') {
-                if !check(pair[0..equal_index].trim_right()) {
+                if !check(pair[0..equal_index].trim_end()) {
                     return Err(ParseOAuthAuthorizationHeaderError::EscapeError);
                 }
 
-                let val = pair[equal_index+1..].trim_left();
+                let val = pair[equal_index+1..].trim_start();
                 if !val.starts_with('"') || !val.ends_with('"') {
                     return Err(ParseOAuthAuthorizationHeaderError::FormatError);
                 }
@@ -261,11 +261,11 @@ fn nonce() -> String {
 }
 
 fn hmac_sha1_base64(key: &[u8], msg: &[u8]) -> String {
-    use ring::{digest, hmac};
+    use ring::hmac;
 
     base64::encode(
         hmac::sign(
-            &hmac::SigningKey::new(&digest::SHA1, key),
+            &hmac::Key::new(hmac::HMAC_SHA1_FOR_LEGACY_USE_ONLY, key),
             msg
         ).as_ref()
     )
